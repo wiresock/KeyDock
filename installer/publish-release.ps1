@@ -125,5 +125,7 @@ $finalAssets = @(Get-ReleaseAssets)
 if ($finalAssets.Count -ne $checksums.Count) { throw 'Release assets are incomplete' }
 foreach ($asset in $finalAssets) { Assert-Asset $asset }
 if ((Get-ReleaseTagCommit $tag) -cne $commit) { throw 'Tag changed before publication' }
-if ($release.draft) { gh release edit $tag --repo $repo --draft=false }
+if ($release.draft) {
+    gh api --method PATCH "repos/$repo/releases/$($release.id)" -F draft=false -f make_latest=legacy --silent
+}
 "Published $tag from $commit with verified x64 files."
