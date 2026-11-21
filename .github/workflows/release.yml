@@ -2,115 +2,78 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      operation:
-        description: Build artifacts or promote a completed candidate run
-        type: choice
-        options: [build, promote]
-        default: build
-      candidate_run:
-        description: Successful Release run ID for promotion
-        type: string
-      manifest_sha256:
-        description: SHA-256 of the Windows-validated x64 candidate manifest
-        type: string
 
 permissions:
   contents: read
 
 jobs:
-  validate-ref:
-    name: Validate version and source
-    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'build'
+  version:
+    name: Inspect main version
+    if: github.event_name == 'push'
     runs-on: windows-2022
     timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      changed: ${{ steps.version.outputs.changed }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
-      - name: Match the package version and selected ref
+          fetch-depth: 0
+      - name: Compare the push's before and after commits
+        id: version
+        env:
+          BEFORE: ${{ github.event.before }}
+          SOURCE: ${{ github.sha }}
         run: |
-          $version = [regex]::Match((Get-Content -Raw Cargo.toml), '(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"').Groups[1].Value
-          if (!$version -or !(Test-Path -LiteralPath "docs/releases/$version.md" -PathType Leaf)) {
-              throw 'Missing package version or release notes'
-          }
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") {
-              throw 'Tag and Cargo.toml version differ'
-          }
-          if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'Checkout and workflow revision differ' }
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ((git rev-parse HEAD) -cne $env:SOURCE) { throw 'Unexpected checkout' }
+          if ($env:BEFORE -cnotmatch '^[0-9a-f]{40}$') { throw 'Missing prior main SHA' }
+          git merge-base --is-ancestor $env:BEFORE $env:SOURCE
+          . .\installer\release-policy.ps1
+          $plan = Get-KeyDockReleasePlan $env:BEFORE $env:SOURCE
+          "version=$($plan.Version)" >> $env:GITHUB_OUTPUT
+          "changed=$($plan.Changed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-  candidate:
-    name: Build release candidates
-    needs: validate-ref
+  build:
+    name: Verify source and packages
+    needs: version
+    if: |
+      !cancelled() && (github.event_name == 'workflow_dispatch' || needs.version.result == 'success')
     uses: ./.github/workflows/ci.yml
     with:
-      candidate: true
+      candidate: ${{ github.event_name == 'workflow_dispatch' || needs.version.outputs.changed == 'true' }}
 
-  promote:
-    name: Publish approved x64 assets
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'promote'
+  publish:
+    name: Publish verified x64 release
+    needs: [version, build]
+    if: |
+      github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected &&
+      needs.version.outputs.changed == 'true' && needs.build.result == 'success'
     runs-on: windows-2022
-    timeout-minutes: 10
-    environment: public-release
-    permissions:
-      actions: read
-      contents: write
+    timeout-minutes: 15
     concurrency:
-      group: publish-${{ github.ref }}
+      group: keydock-release-${{ needs.version.outputs.version }}
       cancel-in-progress: false
-    env:
-      GH_TOKEN: ${{ github.token }}
-      CANDIDATE_RUN: ${{ inputs.candidate_run }}
-      APPROVED_MANIFEST: ${{ inputs.manifest_sha256 }}
-      APPROVED_SOURCE: ${{ vars.KEYDOCK_APPROVED_RELEASE_SHA }}
+    permissions:
+      contents: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
-      - name: Check publication authorization and candidate run
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $version = [regex]::Match((Get-Content -Raw Cargo.toml), '(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"').Groups[1].Value
-          if (!$version -or $env:GITHUB_REF_TYPE -ne 'tag' -or $env:GITHUB_REF_NAME -cne "v$version") {
-              throw 'Select the matching version tag for promotion'
-          }
-          if ($env:APPROVED_SOURCE -ne $env:GITHUB_SHA -or (git rev-parse HEAD) -ne $env:GITHUB_SHA) {
-              throw 'The exact tagged revision needs owner approval'
-          }
-          if (!(Test-Path -LiteralPath LICENSE -PathType Leaf) -or !(Get-Content -Raw -LiteralPath LICENSE).Trim()) {
-              throw 'Owner-approved LICENSE is required'
-          }
-          if ($env:CANDIDATE_RUN -notmatch '^[1-9][0-9]*$' -or $env:APPROVED_MANIFEST -notmatch '^[a-fA-F0-9]{64}$') {
-              throw 'Provide a candidate run ID and its verified manifest SHA-256'
-          }
-          if ((gh repo view $env:GITHUB_REPOSITORY --json visibility --jq .visibility) -ne 'PUBLIC') {
-              throw 'The repository must already be public by owner decision'
-          }
-          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:CANDIDATE_RUN" | ConvertFrom-Json
-          if ($run.path -ne '.github/workflows/release.yml' -or $run.conclusion -ne 'success' -or $run.head_sha -ne $env:GITHUB_SHA) {
-              throw 'Candidate must come from a successful Release run at the selected revision'
-          }
+          fetch-depth: 0
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.candidate_run }}
           name: keydock-x64-candidate
           path: dist
-      - name: Verify approved assets and publish
+      - name: Tag and publish the exact validated commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $version = $env:GITHUB_REF_NAME.Substring(1)
-          $manifest = 'dist/SHA256SUMS.txt'
-          if ((Get-FileHash -LiteralPath $manifest).Hash -ne $env:APPROVED_MANIFEST) {
-              throw 'Candidate checksums differ from the operator-approved manifest'
-          }
-          $provenance = Get-Content -Raw -LiteralPath 'dist/provenance.json' | ConvertFrom-Json
-          if ($provenance.source -ne $env:GITHUB_SHA -or $provenance.prevalidated_msi) {
-              throw 'Candidate does not match the tagged automated build'
-          }
-          .\installer\verify-release.ps1 -Directory dist -Version $version -Architecture x64
-          $name = "KeyDock-$version-x64"
-          gh release create $env:GITHUB_REF_NAME "dist/$name.msi" "dist/$name.zip" "dist/$name-notices.zip" $manifest --repo $env:GITHUB_REPOSITORY --draft --verify-tag --title "KeyDock $version" --notes-file "docs/releases/$version.md"
-          gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --draft=false
+          .\installer\publish-release.ps1 -Before $env:BEFORE -Version $env:VERSION -Directory dist

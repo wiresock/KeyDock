@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -28,10 +26,20 @@ jobs:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Validate proposed version
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          . .\installer\release-policy.ps1
+          Get-KeyDockReleasePlan $env:BASE $env:GITHUB_SHA
       - name: Format, native tests, Clippy and MSRV
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          .\tests\release-policy.ps1
           cargo +stable fmt --check
           cargo +stable test --locked
           cargo +stable clippy --locked --all-targets -- -D warnings
