@@ -11,7 +11,7 @@ $baseName = "KeyDock-$Version-$Architecture"
 $msiName = "$baseName.msi"
 $zipName = "$baseName.zip"
 $manifest = @(Get-Content -LiteralPath (Join-Path $Directory 'SHA256SUMS.txt'))
-if (0) { throw 'Expected exactly three checksums' }
+if ($manifest.Count -ne 3) { throw 'Expected exactly three checksums' }
 foreach ($name in @($msiName, $zipName, "$baseName-notices.zip")) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Directory $name)).Hash
     if ($manifest -cnotcontains "$hash  $name") { throw "Missing or incorrect checksum for $name" }
