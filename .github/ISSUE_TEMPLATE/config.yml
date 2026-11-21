@@ -1,0 +1,4 @@
+contact_links:
+  - name: Security policy
+    url: https://github.com/wiresock/KeyDock/security
+    about: Use private reporting for security issues.

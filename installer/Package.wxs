@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     RequiredVersion="6.0.0">
+  <Package
+      Name="KeyDock"
+      Manufacturer="NT KERNEL"
+      Version="$(ProductVersion)"
+      UpgradeCode="{29B61C7C-D38A-4674-BDB2-E0E039BB1CDE}"
+      Scope="perMachine"
+      InstallerVersion="500"
+      Compressed="yes"
+      Language="1033">
+
+    <SummaryInformation
+        Description="KeyDock per-machine installer"
+        Comments="Switches keyboard layouts when an external keyboard is connected or disconnected." />
+
+    <!-- One UpgradeCode for x64 and ARM64: installing either replaces an older version of the other. -->
+    <MajorUpgrade
+        AllowDowngrades="no"
+        DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+        Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="KeyDock.ico" SourceFile="$(AssetsDir)\keydock.ico" />
+    <Property Id="ARPPRODUCTICON" Value="KeyDock.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/wiresock/KeyDock" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/wiresock/KeyDock/issues" />
+
+    <!-- Resolves to "C:\Program Files" for both the x64 and the ARM64 package. -->
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="KeyDock">
+        <Component Id="KeyDockExeComponent" Feature="MainFeature">
+          <File Id="KeyDockExe" Name="keydock.exe" Source="$(KeyDockExe)" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcutComponent" Feature="MainFeature">
+        <Shortcut
+            Id="KeyDockStartMenuShortcut"
+            Name="KeyDock"
+            Description="Keyboard layouts for docked and undocked use"
+            Target="[INSTALLFOLDER]keydock.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Advertise="no"
+            Icon="KeyDock.ico"
+            IconIndex="0" />
+        <RegistryValue
+            Root="HKLM"
+            Key="Software\NT KERNEL\KeyDock"
+            Name="StartMenuShortcut"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature
+        Id="MainFeature"
+        Title="KeyDock"
+        Level="1"
+        AllowAbsent="no"
+        AllowAdvertise="no" />
+
+    <!--
+      Stop a running KeyDock before files are replaced or removed (upgrade,
+      repair, uninstall). KeyDock exits cleanly on WM_CLOSE and on
+      WM_QUERYENDSESSION/WM_ENDSESSION; if it is still running after the
+      default 5 second wait it is terminated with exit code 0 instead of
+      asking for a reboot.
+    -->
+    <util:CloseApplication
+        Id="CloseKeyDock"
+        Target="keydock.exe"
+        CloseMessage="yes"
+        EndSessionMessage="yes"
+        RebootPrompt="no"
+        TerminateProcess="0" />
+
+    <!--
+      "Start with Windows" is a per-user HKCU Run value written by the app
+      itself, so this per-machine package does not own it. On a real
+      uninstall (not a major upgrade) the installed keydock.exe removes the
+      value for the user running the uninstall if it points to that exe or to
+      a missing file. Immediate actions run before the scripted file removal.
+    -->
+    <CustomAction
+        Id="RemoveAutostartEntry"
+        FileRef="KeyDockExe"
+        ExeCommand="--remove-autostart"
+        Execute="immediate"
+        Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveAutostartEntry" Before="RemoveFiles"
+              Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <!-- Wizard without a license page; optional "Launch KeyDock" on the last page. -->
+    <ui:WixUI Id="KeyDockUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch KeyDock" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#KeyDockExe]" />
+    <CustomAction
+        Id="LaunchKeyDock"
+        BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+        DllEntry="WixShellExec"
+        Impersonate="yes" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchKeyDock"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

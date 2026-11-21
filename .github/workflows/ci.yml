@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  checks:
+    name: Rust checks
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - name: Format, native tests, Clippy and MSRV
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          cargo +stable fmt --check
+          cargo +stable test --locked
+          cargo +stable clippy --locked --all-targets -- -D warnings
+          rustup toolchain install 1.88.0 --profile minimal
+          cargo +1.88.0 check --locked --all-targets
+
+  package:
+    name: Package (${{ matrix.arch }})
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - name: Build and validate package
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+          RUSTUP_TOOLCHAIN: stable
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup toolchain install stable --profile minimal --component rust-docs
+          rustup target add --toolchain stable $env:TARGET
+          cargo +stable build --release --locked --target $env:TARGET
+          .\installer\package-release.ps1 -Architecture $env:ARCH -KeyDockExe "target/$env:TARGET/release/keydock.exe" -OutputDirectory dist
+      - name: Upload release candidate
+        if: inputs.candidate == true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: keydock-${{ matrix.arch }}-candidate
+          path: dist/
+          if-no-files-found: error

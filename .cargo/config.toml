@@ -1,0 +1,8 @@
+# Link the C runtime statically so keydock.exe does not need the
+# Visual C++ Redistributable (VCRUNTIME140.dll).
+# /IGNORE:4099: the static CRT ships without PDBs ("Cannot use debug info", LNK4099).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/IGNORE:4099"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/IGNORE:4099"]

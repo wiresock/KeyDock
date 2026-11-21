@@ -1,0 +1,11 @@
+/target
+__pycache__/
+/installer/bin/
+/installer/obj/
+/installer/out/
+/dist/
+*.pfx
+*.p12
+*.key
+.env
+.env.local

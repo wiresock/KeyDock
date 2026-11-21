@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a reproducible KeyDock problem
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: KeyDock version, Windows build, and architecture
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps and expected result
+      description: Include keyboard connection type and relevant profile settings.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed result
+      description: Include relevant log lines with personal paths and device identifiers redacted.
+    validations:
+      required: true

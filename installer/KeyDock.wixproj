@@ -1,0 +1,64 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <!--
+    KeyDock MSI (per-machine, x64 and ARM64).
+
+    Build with installer\build.ps1, or directly:
+      dotnet build installer\KeyDock.wixproj -c Release -p:Platform=x64
+      dotnet build installer\KeyDock.wixproj -c Release -p:Platform=ARM64
+
+    ProductVersion defaults to the version in ..\Cargo.toml; KeyDockExe
+    defaults to the cargo release build for the selected platform.
+  -->
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <Platforms>x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <DebugType>none</DebugType>
+    <DefaultCompressionLevel>high</DefaultCompressionLevel>
+    <SuppressValidation>false</SuppressValidation>
+    <!--
+      The Start menu shortcut lives in the all-users Programs folder because
+      this is a forced per-machine package; ICE38/ICE43/ICE57 still expect a
+      per-user (HKCU) key path for shortcuts in a profile folder.
+    -->
+    <SuppressIces>ICE38;ICE43;ICE57</SuppressIces>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Cultures>en-US</Cultures>
+    <RepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RepositoryRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ProductVersion)' == ''">
+    <!-- First `version = "x.y.z"` line of Cargo.toml: the [package] version. -->
+    <_CargoVersionLine>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RepositoryRoot)\Cargo.toml')), '(?m)^version\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"').Value)</_CargoVersionLine>
+    <ProductVersion>$([System.Text.RegularExpressions.Regex]::Match('$(_CargoVersionLine)', '[0-9]+\.[0-9]+\.[0-9]+').Value)</ProductVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(InstallerPlatform)' == '' and '$(Platform)' == 'x64'">
+    <InstallerPlatform>x64</InstallerPlatform>
+    <RustTarget>x86_64-pc-windows-msvc</RustTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(InstallerPlatform)' == '' and '$(Platform)' == 'ARM64'">
+    <InstallerPlatform>arm64</InstallerPlatform>
+    <RustTarget>aarch64-pc-windows-msvc</RustTarget>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <KeyDockExe Condition="'$(KeyDockExe)' == ''">$(RepositoryRoot)\target\$(RustTarget)\release\keydock.exe</KeyDockExe>
+    <OutputName Condition="'$(OutputName)' == ''">KeyDock-$(ProductVersion)-$(InstallerPlatform)</OutputName>
+    <DefineConstants>$(DefineConstants);ProductVersion=$(ProductVersion);KeyDockExe=$(KeyDockExe);AssetsDir=$(RepositoryRoot)\assets</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+  <Target Name="ValidateInstallerInputs" BeforeTargets="Build">
+    <Error Condition="'$(InstallerPlatform)' != 'x64' and '$(InstallerPlatform)' != 'arm64'"
+           Text="Platform must be x64 or ARM64 (got '$(Platform)')." />
+    <Error Condition="'$(ProductVersion)' == ''"
+           Text="ProductVersion is empty and could not be read from Cargo.toml." />
+    <Error Condition="!Exists('$(KeyDockExe)')"
+           Text="keydock.exe not found at '$(KeyDockExe)'. Build it with cargo (installer\build.ps1 does) or pass -p:KeyDockExe=path." />
+  </Target>
+</Project>
