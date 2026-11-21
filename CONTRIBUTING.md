@@ -13,3 +13,7 @@ cargo clippy --locked --all-targets -- -D warnings
 Windows CI exercises native process, mutex, and Job Object behavior with test-owned processes and names. The ignored live language-order test changes Windows input settings and belongs in a disposable console account. The ignored old-job-reuse diagnostic is for investigating host-specific behavior.
 
 Use the [release guide](docs/releasing.md) for packaging and publication.
+
+## Versioning
+
+Keep the package version unchanged for ordinary PRs. To publish a release, increase the version in `Cargo.toml`, refresh `Cargo.lock` and add `docs/releases/X.Y.Z.md`. Open a PR, wait for CI, resolve conversations, and squash merge. GitHub Actions validates the merged commit and publishes x64 automatically for new versions after the first release. See the [bootstrap procedure](docs/releasing.md#bootstrap-v0312) for v0.3.12.
