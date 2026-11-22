@@ -25,6 +25,10 @@ Verify downloads against the release's `SHA256SUMS.txt` using `Get-FileHash -Alg
 
 Windows 10/11
 
+Windows can reorder the language list during a layout change, and removing a language's last layout can remove the language. The default `language_order = "report"` reports such changes. Opt-in restoration checks for conflicts before writing the language list. Elevated windows and applications that ignore switch requests can keep their current layout. Remote sessions are inactive by default.
+
+See the [configuration reference](docs/configuration.md) for advanced TOML profiles, device IDs, CLI behavior, recovery, and Windows input limitations.
+
 ## Build from source
 
 On Windows, install Rust 1.88 or newer, Visual Studio Build Tools with **Desktop development with C++** and a Windows SDK, and a .NET SDK supported by WiX 6. WiX 6 is restored from NuGet.
