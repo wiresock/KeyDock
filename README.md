@@ -23,15 +23,7 @@ Verify downloads against the release's `SHA256SUMS.txt` using `Get-FileHash -Alg
 
 ## Compatibility
 
-| Platform | Validation |
-| --- | --- |
-| Windows 10 22H2 x64 | Desktop smoke, MSI lifecycle and upgrade while KeyDock was running passed in a console VM. Docking and resume events were simulated. |
-| Windows 11 | Final desktop validation was waived. |
-| Windows on ARM64 | Source and installer support ARM64 builds. Native desktop and installer validation is pending. |
-
-Windows can reorder the language list during a layout change, and removing a language's last layout can remove the language. The default `language_order = "report"` reports such changes. Opt-in restoration checks for conflicts before writing the language list. Elevated windows and applications that ignore switch requests can keep their current layout. Remote sessions are inactive by default.
-
-See the [configuration reference](docs/configuration.md) for advanced TOML profiles, device IDs, CLI behavior, recovery, and Windows input limitations.
+Windows 10/11
 
 ## Build from source
 
